@@ -1,15 +1,15 @@
 ---
-title: "Enter indicator name here"
+title: "Change in river water flow due to hydropower"
 subtitle: |
-  [INDICATORID] (ECOSYSTEM A) \
-  [INDICATORID2] (ECOSYSTEM B)  
+  [NO_FLCH_001] (flood water flow) \
+  [NO_FLCH_002] (winter water flow)  
 # delete the line with the second indicatorID (line 5) 
 # if it's not relevant for you.
 # In the parentheses you can add a word to distinguish multiple indicators 
 # from each other, for example the ecosystem type that they cover
 indicatorID: 
-  - INDICATORID
-  - INDICATORID2 # delete whole line if not needed
+  - NO_FLCH_001
+  - NO_FLCH_002 # delete whole line if not needed
 # If you are presenting multiple indicators, and have multiple 
 # indicator IDs, then add them as a list here, and make sure you add
 # the same number of list entries, 
@@ -20,31 +20,32 @@ indicatorID:
 # same realm, same country etc., then you only need to write the realm and
 # country once. 
 indicatorName: 
-  - INDICATOR_NAME # add more by adding another line starting '-'
+  - Change in river water flow due to hydropower # add more by adding another line starting '-'
 verbatimName: 
-  - VERBATIM_INDICATOR_NAME # the indicator name that us used in the native language
+  - Endring i elvevannføring grunnet kraftutbygging # the indicator name that us used in the native language
 folderName: XXX_YYY_ZZZ # Leave to be filled out by ecRxiv during typesetting (name of the folder under 'indicators/'). 
 # If it's a single indicator being reported, the folder name should be the same as the indicatorID. 
 # If there are multiple ID's then the folder name could look something like XX_YYY_ZZZ-ÅÅÅ.
-country: country
-continent: continent
-ECT: write ECT here # e.g. A2 - Chemical State characteristics
+country: Norway
+continent: Europe
+ECT: A1 - Physical state characteristics # e.g. A2 - Chemical State characteristics
 Realm: # Please copy and paste Realms, Biomes and Ecostsem names from here: https://github.com/NINAnor/ecRxiv/wiki#ecosystem-typology 
-  - write realm here # e.g. Freshwater (F)
+  - Freshwater (F)
 Biome: 
-  - write biome here # e.g. F1 Rivers and streams biome
+  - F1 Rivers and streams biome
 Ecosystem: 
-  - write ecosystem here # e.g. F1.3 Freeze-thaw streams
+  - F1.2 Perm lowland rivers # e.g. F1.3 Freeze-thaw streams
 verbatimEcosystem: # add name of the ecosystem or naturetype according to any relevant local or national typology. E.g. fjell, skog, ... 
-yearAdded: 2025 # the year when the indicator was first submitted to ecRxiv
-yearLastUpdate: 2025
+  - Elv
+yearAdded: 2026 # the year when the indicator was first submitted to ecRxiv
+yearLastUpdate: 2026
 status: incomplete # options are complete, incomplete, or deprecated
 Version: "0.1.0" # See wiki page: https://github.com/NINAnor/ecRxiv/wiki#versioning
-VersionComment: Comment here # Describe briefly how this version differs from earlier versions 
+VersionComment: First try # Describe briefly how this version differs from earlier versions 
 url: https://github.com/NINAnor/ecRxiv/tree/main/indicators/XX_YYYY_ZZZ
 # To be filled out by ecRxiv during the typesetting, when they will replace XX_YYYY_ZZ with the name of the root folder for the current indicator(s). It should be the same as the indicatorID, but if there are more indicator IDs presented in the same folder, the folder name might be different, e.g. XX_YYYY_AAA-BBB 
-Normalised: # Yes or no depending on whether the metric has been normliased or not.
-SpatialAggregationPathway: Describe the aggregation using the standrdaise terminology # e.g. Scale - Transform - Aggregate (length-weighted arithmetic mean) - Truncate
+Normalised: Yes  # Yes or no depending on whether the metric has been normliased or not.
+SpatialAggregationPathway: Scale - Aggregate # Describe the aggregation using the standrdaise terminology # e.g. Scale - Transform - Aggregate (length-weighted arithmetic mean) - Truncate
 Precision: #Describe the precition metric you have used. Precision may be reported either as variation among observed values (e.g. standard deviation, variance, range, interquartile range) or as uncertainty around an estimated value (e.g. standard error, confidence interval, credible interval). 
 format: 
   html:
@@ -57,15 +58,20 @@ format:
 execute: 
   cache: true
 author:
-  - name: John Doe              # Enter name
-    email: john.doe@example.no  # Enter email
+  - name: Roar Brænden              # Enter name
+    email: roar.branden@niva.no  # Enter email
     affiliations:
-      - id: myID
-        name: A Fictive Institute for Nature Research # Enter affiliations
-  - name: First Last              #  Enter subsequent authors like this, or remove if not relevant
+      - id: 1
+        name: Norwegian Institute for Water Research # Enter affiliations
+  - name: Dag Øystein Hjermann
+    email: dag.hjermann@niva.no
     affiliations:
-      - ref: myID               # To reuse affiliations reference the id like this
-AuthorList: Doe, J. and Last, F.  
+      - ref: 1               # To reuse affiliations reference the id like this
+  - name: Johnny Håll
+    email: johnny.hall@niva.no
+    affiliations:
+      - ref: 1               # To reuse affiliations reference the id like this
+AuthorList: Brænden, R., Hjermann, D.Ø. and Håll. J.  # Doe, J. and Last, F.  
 date: January 1, 1901 # Enter date
 data_availability: none
 code_reproducibility: none
@@ -239,10 +245,13 @@ meta |>
 <!--# 
 With a maximum of 300 words, describe the indicator in general terms as you would to a non-expert. Think of this as a kind of common language summary. Follow the four numbers sub-headers below. under point 2, it is possible under  include a bullet point list of the specific steps in the workflow. 
  -->
+The natural pattern of river water flow in most parts of Scandinavia is low flow during winter, when most precipitation comes in the form of snow, and with a flood peak during spring and early summer when the snow melts. Hydropower development involving large water reservoirs affects this pattern, typically by increasing the water flow during winter and decreasing water flow during spring and early summer. This indicator uses measurements of water flow from NVE's stations during the last 20 years and compares it with estimates of natural water flow at the same locations, using NVE'S NEVINA model tool.
 
 1. **Background and rationale**:
 <!-- What does the metric represent? Why is this relevant for describing ecosystem condition in this ecosystem?
 What are the main anthropogenic impact factors? -->
+The seasonal pattern of river water flow is an important factor shaping river ecosystems. [Add more on how both winter low water flow and spring floods affect ecosystems.] 
+
 2. **Methods**:
 <!-- What kind of data is used? How is the data customized (modified, estimated, integrated) to fit its purpose as an indicator? -->
 3. **Interpretation**:
