@@ -1,15 +1,15 @@
 ---
 title: "Change in river water flow due to hydropower"
 subtitle: |
-  [NO_FLCH_001] (flood water flow) \
-  [NO_FLCH_002] (winter water flow)  
+  [NO_WFLO_001] (flood water flow) \
+  [NO_WFLO_002] (winter water flow)  
 # delete the line with the second indicatorID (line 5) 
 # if it's not relevant for you.
 # In the parentheses you can add a word to distinguish multiple indicators 
 # from each other, for example the ecosystem type that they cover
 indicatorID: 
-  - NO_FLCH_001
-  - NO_FLCH_002 # delete whole line if not needed
+  - NO_WFLO_001
+  - NO_WFLO_002 # delete whole line if not needed
 # If you are presenting multiple indicators, and have multiple 
 # indicator IDs, then add them as a list here, and make sure you add
 # the same number of list entries, 
