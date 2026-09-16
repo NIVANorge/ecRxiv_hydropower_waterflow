@@ -53,24 +53,23 @@ flow_stats <- function(lowflow, highflow) {
     )
 }
 
-plot_lowflow <- function(seriestasjoner, flowstats) {
+plot_lowflow <- function(seriestasjoner, flowstats, logscale = FALSE) {
   combined <- merge(seriestasjoner, flowstats, by = "stasjonsnr")
   plot(combined$lowflow_m3s, combined$lowflow_mean,
        xlab = "lowflow_m3s (Nevina)", ylab = "lowflow_mean (Målt)",
-       main = "Nevina lowflow vs. målt middel lavvann")
+       main = "Nevina lowflow vs. målt middel lavvann", log = ifelse(logscale,"xy",""))
   abline(0, 1, col = "red", lty = 2)  # 1:1 reference line
 }
 
-
-plot_highflow <- function(seriestasjoner, flowstats) {
+plot_highflow <- function(seriestasjoner, flowstats, logscale = FALSE) {
   combined <- merge(seriestasjoner, flowstats, by = "stasjonsnr")
   plot(combined$highflow_m3s, combined$highflow_mean,
        xlab = "highflow_m3s (Nevina)", ylab = "highflow_mean (Målt)",
-       main = "Nevina highflow vs. målt middel flom")
+       main = "Nevina highflow vs. målt middel flom", log = ifelse(logscale,"xy",""))
   abline(0, 1, col = "red", lty = 2)  # 1:1 reference line
 }
 
-flom_indikator <- function(seriestasjoner, flowstats) {
+flom_indikator <- function(seriestasjoner, flowstats, logscale = FALSE) {
   combined <- merge(seriestasjoner, flowstats, by = "stasjonsnr")
   combined$flom_indikator <- 1 - (combined$highflow_m3s - combined$highflow_mean) / combined$highflow_m3s
   combined
