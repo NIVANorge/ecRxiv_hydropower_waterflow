@@ -1,11 +1,11 @@
 library(dplyr)
 
-read_seriedata <- function(file_path = "data/seriedata.csv") {
+read_seriedata <- function(file_path = "../data/seriedata.csv") {
   data <- read.csv(file_path, stringsAsFactors = FALSE)
   data
 }
 
-read_seriestasjoner <- function(file_path = "data/seriestasjoner.csv") {
+read_seriestasjoner <- function(file_path = "../data/seriestasjoner.csv") {
   data <- read.csv(file_path, stringsAsFactors = FALSE)
   data <- data %>% filter(lowflow_m3s > 0)
 
