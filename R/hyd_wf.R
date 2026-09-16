@@ -69,9 +69,17 @@ plot_highflow <- function(seriestasjoner, flowstats, logscale = FALSE) {
   abline(0, 1, col = "red", lty = 2)  # 1:1 reference line
 }
 
+
 flom_indikator <- function(seriestasjoner, flowstats, logscale = FALSE) {
   combined <- merge(seriestasjoner, flowstats, by = "stasjonsnr")
   combined$flom_indikator <- 1 - (combined$highflow_m3s - combined$highflow_mean) / combined$highflow_m3s
+  combined
+}
+
+kalkuler_indikatorer <- function(seriestasjoner, flowstats, logscale = FALSE) {
+  combined <- merge(seriestasjoner, flowstats, by = "stasjonsnr")
+  combined$flom_indikator <- 1 - (combined$highflow_m3s - combined$highflow_mean) / combined$highflow_m3s
+  combined$lavvann_indikator_prelim <- 1 - (combined$lowflow_mean - combined$lowflow_m3s) / combined$lowflow_mean
   combined
 }
 
@@ -80,4 +88,18 @@ plot_flom_indikator <- function(flom_indikator_data) {
        breaks = 30,
        xlab = "log10(flom_indikator)", main = "Fordeling av flom_indikator (log-skala)")
   abline(v = 0, col = "red", lty = 2)  # flom_indikator = 1: målt middel flom lik Nevina-estimat
+}
+
+
+plot_indikator <- function(indikator_data, indikator = 1) {
+  if (indikator == 1){
+  hist(indikator_data$flom_indikator,
+       breaks = 30, log = "x",
+       xlab = "flom_indikator", main = "Fordeling av flom_indikator (log-skala)")
+  } else {
+    hist(log10(indikator_data$lavvann_indikator),
+         breaks = 30,
+         xlab = "log10(lavvann_indikator)", main = "Fordeling av lavvann_indikator (log-skala)")
+  }
+  abline(v = 1, col = "red", lty = 2)  # indikator = 1
 }

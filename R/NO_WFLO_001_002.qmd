@@ -266,7 +266,7 @@ Values decreasing toward zero reflect...
 
 ## 2. About the underlying data
 
-<!--# Give a general introduction the datasets you have used, and provide more specific details in the sub-chapters.  -->
+<!--# Give a general introduction the datasets you have used, and provide more specific details in the sub-chapters.  -->  
 
 ### 2.1 Spatial and temporal resolution and extent
 
