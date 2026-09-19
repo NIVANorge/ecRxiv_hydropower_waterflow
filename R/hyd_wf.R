@@ -1,4 +1,5 @@
 library(dplyr)
+library(lubridate)
 
 read_seriedata <- function(file_path = "../data/seriedata.csv") {
   data <- read.csv(file_path, stringsAsFactors = FALSE)
@@ -19,17 +20,32 @@ read_seriestasjoner <- function(file_path = "../data/seriestasjoner.csv") {
   data
 }
 
-yearly_highflow <- function(data) {
-  data$year <- as.integer(format(as.Date(data$date), "%Y"))
+yearly_highflow_base <- function(data) {
   result <- aggregate(dailyQ_m3s ~ stasjonsnr + year,
                       data = data, FUN = max, na.rm = TRUE)
   names(result)[names(result) == "dailyQ_m3s"] <- "highflow"
   result
 }
 
-yearly_lowflow <- function(data) {
-  month <- as.integer(format(as.Date(data$date), "%m"))
-  year <- as.integer(format(as.Date(data$date), "%Y"))
+yearly_highflow <- function(data) {
+  data |> 
+    group_by(stasjonsnr, year) |> 
+    summarise(highflow = max(dailyQ_m3s), .groups = "drop")
+}
+
+if (FALSE){
+  # test
+  t0 = Sys.time(); res1 <- yearly_highflow_base(dat); t1 = Sys.time(); t1-t0
+  t0 = Sys.time(); res2 <- yearly_highflow(dat)     ; t1 = Sys.time(); t1-t0
+}
+
+
+yearly_lowflow_base <- function(data) {
+  # month <- as.integer(format(as.Date(data$date), "%m"))
+  # year <- as.integer(format(as.Date(data$date), "%Y"))
+  data <- as.data.frame(data)
+  month <- data[["month"]]
+  year <- data[["year"]]
   keep <- month %in% c(10, 11, 12, 1, 2, 3, 4)
   data <- data[keep, ]
   data$year <- ifelse(month[keep] >= 10, year[keep] + 1, year[keep])
@@ -39,9 +55,25 @@ yearly_lowflow <- function(data) {
   result
 }
 
+yearly_lowflow <- function(data) {
+  data |> 
+    filter(month %in% c(10, 11, 12, 1, 2, 3, 4)) |> 
+    mutate(year = ifelse(month >= 10, year+1, year)) |> 
+    group_by(stasjonsnr, year) |> 
+    summarise(lowflow = quantile(dailyQ_m3s, probs = 0.05), .groups = "drop")
+}
+
+if (FALSE){
+  # test
+  t0 = Sys.time(); res1 <- yearly_lowflow_base(dat); t1 = Sys.time(); t1-t0
+  t0 = Sys.time(); res2 <- yearly_lowflow(dat)     ; t1 = Sys.time(); t1-t0
+  res1 |> arrange(stasjonsnr, year) |>  head(5)
+  res2 |> arrange(stasjonsnr, year) |>  head(5)
+}
+
+
 flow_stats <- function(lowflow, highflow) {
   combined <- merge(lowflow, highflow, by = c("stasjonsnr", "year"))
-
   combined %>%
     group_by(stasjonsnr) %>%
     summarise(
@@ -79,7 +111,7 @@ flom_indikator <- function(seriestasjoner, flowstats, logscale = FALSE) {
 kalkuler_indikatorer <- function(seriestasjoner, flowstats, logscale = FALSE) {
   combined <- merge(seriestasjoner, flowstats, by = "stasjonsnr")
   combined$flom_indikator <- 1 - (combined$highflow_m3s - combined$highflow_mean) / combined$highflow_m3s
-  combined$lavvann_indikator_prelim <- 1 - (combined$lowflow_mean - combined$lowflow_m3s) / combined$lowflow_mean
+  combined$lavvann_indikator <- 1 - (combined$lowflow_mean - combined$lowflow_m3s) / combined$lowflow_mean
   combined
 }
 
@@ -103,3 +135,50 @@ plot_indikator <- function(indikator_data, indikator = 1) {
   }
   abline(v = 1, col = "red", lty = 2)  # indikator = 1
 }
+
+
+#
+# data column formats ----
+#
+
+columntypes_meta <- cols(
+  stasjonsnr = col_character(),
+  Stasjonsnavn = col_character(),
+  Måleparameter = col_character(),
+  Versjon = col_double(),
+  Målested = col_character(),
+  Stasjontype = col_character(),
+  `Status (i drift/nedlagt)` = col_character(),
+  `Målestart (dato)` = col_character(),
+  `Data kontrollert fra (dato)` = col_datetime(format = ""),
+  `Data kontrollert til (dato)` = col_datetime(format = ""),
+  `Evt. nedlagt (dato)` = col_character(),
+  `Normal årsavrenning (l/s km2)` = col_double(),
+  `Totalt feltareal (km2)` = col_double(),
+  `Bratthet (1085-gradient, m/km)` = col_double(),
+  Myrprosent = col_double(),
+  `Effektiv sjøprosent` = col_double(),
+  Jordbruksprosent = col_double(),
+  Skogprosent = col_double(),
+  Innsjøprosent = col_double(),
+  Snaufjellprosent = col_double(),
+  `Urbantareal prosent` = col_double(),
+  Breprosent = col_double(),
+  `Elvegradient (m/km)` = col_double(),
+  `Elvelengde (km)` = col_double(),
+  Elvenavnhierarki = col_character(),
+  `Elvetetthet (m/km)` = col_double(),
+  `Vassdragsomr. nr.` = col_character(),
+  `Vassdragsomr. navn` = col_character(),
+  `Reguleringsgrad areal` = col_double(),
+  `Reguleringsgrad mag,` = col_double(),
+  `Måleparameter kode` = col_double(),
+  `Høyde 10 persentil (m)` = col_double(),
+  `Høyde 90 persentil (m)` = col_double(),
+  `Medianhøyde (m)` = col_double(),
+  `Høyeste punkt (m)` = col_double(),
+  `Laveste punkt (m)` = col_double(),
+  `Høyde over havet (m)` = col_double(),
+  ObjektID = col_double()
+)
+
