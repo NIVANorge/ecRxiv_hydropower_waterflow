@@ -111,7 +111,7 @@ flom_indikator <- function(seriestasjoner, flowstats, logscale = FALSE) {
 kalkuler_indikatorer <- function(seriestasjoner, flowstats, logscale = FALSE) {
   combined <- merge(seriestasjoner, flowstats, by = "stasjonsnr")
   combined$flom_indikator <- 1 - (combined$highflow_m3s - combined$highflow_mean) / combined$highflow_m3s
-  combined$lavvann_indikator <- 1 - (combined$lowflow_mean - combined$lowflow_m3s) / combined$lowflow_mean
+  combined$lavvann_indikator <- with(combined, 1-(lowflow_mean-lowflow_m3s)/(highflow_mean-lowflow_m3s))
   combined
 }
 
