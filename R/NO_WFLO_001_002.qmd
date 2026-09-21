@@ -421,7 +421,7 @@ These are estimates of the mean flood (highest daily water flow over a year) and
 
 stations_orig <- read_seriestasjoner("../data/seriestasjoner.csv")
 
-head(stations_orig, 3) |> kable(caption = "Data sample (three stations)")
+head(stations_orig, 3) |> kable(caption = "Data sample (three stations)")  
 
 ```
 
@@ -483,7 +483,26 @@ cowplot::plot_grid(gg1, gg2, gg3, nrow = 1)
 
 ```
 
-### 7.4 Spatial data pf river flow stations  
+#### More plots  
+```{r}
+
+ggplot(stations, aes(x = normalQ_m3s)) +
+  geom_histogram(breaks = seq(0,300,5))
+
+ggplot(stations, aes(x = normalQ_m3s, y = index_dams)) +
+  geom_point()
+
+stations |> 
+  mutate(
+    normalQ_m3s_c = cut(normalQ_m3s, breaks = c(0,3,5,10,20,50,100,300)),
+    index_dams_c = cut(index_dams, breaks = seq(0,1,0.2), right = FALSE)
+        ) %>% 
+  xtabs(~normalQ_m3s_c + index_dams_c, .)
+
+```
+
+
+### 7.4 Spatial data of river flow stations  
 
 ```{r}
 
@@ -715,7 +734,8 @@ dat_indekser <- dat_indekser |>
   left_join(as.data.frame(geo_points), 
             by = join_by(stasjonsnr), relationship = "many-to-one")
 
-dat_index_county <- dat_indekser |> 
+get_indicators <- function(data){
+  data |>
   group_by(county, county_area) |> 
   summarise(
     n_stations = n(),
@@ -729,42 +749,57 @@ dat_index_county <- dat_indekser |>
   ) |> 
   mutate(county = factor(county, levels = county_order)) |> 
   arrange(county)
+}
 
+dat_index_county <- dat_indekser |> get_indicators()
+dat_index_county_min20 <- dat_indekser |> filter(normalQ_m3s >= 20) |> get_indicators()
+  
 ```
 
-#### 9.6.1 Flood indicators by county  
+#### 9.6.1 Flood indicators by county (all)  
 ```{r}
-gg1 <- ggplot(dat_index_county |> mutate(county = fct_rev(county)), 
-       aes(flom_indikator_unweight, county)) +
-  geom_col() +
-  geom_vline(xintercept = 1, color = "red3")
-gg2 <- ggplot(dat_index_county |> mutate(county = fct_rev(county)), 
-       aes(flom_indikator_weighted, county)) +
-  geom_col() +
-  geom_vline(xintercept = 1, color = "red3")
-gg3 <- ggplot(dat_index_county |> mutate(county = fct_rev(county)), 
-       aes(flom_indikator_logweighted, county)) +
-  geom_col() +
-  geom_vline(xintercept = 1, color = "red3")
-plot_grid(gg1, gg2, gg3, nrow = 1)
+plot_flood_county <- function(data){
+  gg1 <- ggplot((data) |> mutate(county = fct_rev(county)), 
+                aes(flom_indikator_unweight, county)) +
+    geom_col() +
+    geom_vline(xintercept = 1, color = "red3")
+  gg2 <- ggplot((data) |> mutate(county = fct_rev(county)), 
+                aes(flom_indikator_weighted, county)) +
+    geom_col() +
+    geom_vline(xintercept = 1, color = "red3")
+  gg3 <- ggplot((data) |> mutate(county = fct_rev(county)), 
+                aes(flom_indikator_logweighted, county)) +
+    geom_col() +
+    geom_vline(xintercept = 1, color = "red3")
+  plot_grid(gg1, gg2, gg3, nrow = 1)
+}
+
+plot_flood_county(dat_index_county)
+plot_flood_county(dat_index_county_min20)
+
 ```
 
 
 #### 9.6.1 Low water indicators by county  
 ```{r}
-gg1 <- ggplot(dat_index_county |> mutate(county = fct_rev(county)), 
-       aes(lavvann_indikator_unweight, county)) +
-  geom_col() +
-  geom_vline(xintercept = 1, color = "red3")
-gg2 <- ggplot(dat_index_county |> mutate(county = fct_rev(county)), 
-       aes(lavvann_indikator_weighted, county)) +
-  geom_col() +
-  geom_vline(xintercept = 1, color = "red3")
-gg3 <- ggplot(dat_index_county |> mutate(county = fct_rev(county)), 
-       aes(lavvann_indikator_logweighted, county)) +
-  geom_col() +
-  geom_vline(xintercept = 1, color = "red3")
-plot_grid(gg1, gg2, gg3, nrow = 1)
+plot_lowwater_county <- function(data){
+  gg1 <- ggplot(data |> mutate(county = fct_rev(county)), 
+                aes(lavvann_indikator_unweight, county)) +
+    geom_col() +
+    geom_vline(xintercept = 1, color = "red3")
+  gg2 <- ggplot(data |> mutate(county = fct_rev(county)), 
+                aes(lavvann_indikator_weighted, county)) +
+    geom_col() +
+    geom_vline(xintercept = 1, color = "red3")
+  gg3 <- ggplot(data |> mutate(county = fct_rev(county)), 
+                aes(lavvann_indikator_logweighted, county)) +
+    geom_col() +
+    geom_vline(xintercept = 1, color = "red3")
+  plot_grid(gg1, gg2, gg3, nrow = 1)
+}
+plot_lowwater_county(dat_index_county)
+plot_lowwater_county(dat_index_county_min20)
+
 ```
 
 
@@ -776,14 +811,13 @@ plot_grid(gg1, gg2, gg3, nrow = 1)
 #### Straight-forward means, weighted by county area (no SE)
 ```{r}
 
-
 dat_index_national <- dat_index_county |> 
   summarise(
     flom_indikator = weighted.mean(flom_indikator_weighted, w=county_area),
     lavvann_indikator = weighted.mean(lavvann_indikator_weighted, w=county_area)
   )
 
-dat_index_national
+dat_index_national  
 
 ```
 
@@ -796,21 +830,39 @@ df_county_area <- as.data.frame(geo_points) |>
   group_by(county) |> 
   summarise(county_area = first(county_area))
 
-mod <- lm(
-  flom_indikator ~ county,
-  data = dat_indekser,
-  weights = areal_km2)
-emm <- emmeans(mod, ~ county)
+# |> 
+#   as.data.frame()
+# rownames(df_county_area) <- df_county_area$county
 
-w <- df_county_area$county_area
-w <- w / sum(w)
+get_nationalstats_flood <- function(data){
+  mod <- lm(
+    flom_indikator ~ county,
+    data = data,
+    weights = areal_km2)
+  emm <- emmeans(mod, ~ county)
+  
+  areas <- data |> 
+    distinct(county) |> 
+    left_join(df_county_area) |> 
+    arrange(county) |> 
+    pull(county_area)
+  #   w <- df_county_area$county_area
+  # w <- w / sum(w)
+  w <- areas/sum(areas)
+  
+  national <- contrast(
+    emm,
+    method = list(National = w)
+  )
+  
+  summary(national)
+}
 
-national <- contrast(
-  emm,
-  method = list(National = w)
-)
+# debugonce(get_nationalstats_flood)
+dat_indekser |> get_nationalstats_flood()
+dat_indekser |> filter(normalQ_m3s >= 10) |> get_nationalstats_flood()
+dat_indekser |> filter(normalQ_m3s >= 20) |> get_nationalstats_flood()
 
-summary(national)
 
 #  contrast estimate     SE  df t.ratio p.value
 #  National    0.938 0.0188 266  50.001 <0.0001
