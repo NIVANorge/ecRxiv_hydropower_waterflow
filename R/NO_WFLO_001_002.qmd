@@ -701,7 +701,7 @@ plot_grid(gg1, gg2, nrow = 1)
 
 ### 9.6 By county   
 
-We weight the average by log(catchment area), so small catchments are weighed less. We weigh by log(catchment area) to  
+We weight the average by either catchment area or log(catchment area), so small catchments are weighed less. 
 
 ```{r}
 
@@ -711,8 +711,11 @@ county_order  <- c("Finnmark", "Troms", "Nordland", "Trøndelag", "Møre og Roms
   "Vestland", "Buskerud", "Innlandet", 
   "Rogaland", "Agder",  "Telemark", "Vestfold", "Oslo","Akershus", "Østfold")
 
+dat_indekser <- dat_indekser |> 
+  left_join(as.data.frame(geo_points), 
+            by = join_by(stasjonsnr), relationship = "many-to-one")
+
 dat_index_county <- dat_indekser |> 
-  left_join(as.data.frame(geo_points), by = join_by(stasjonsnr)) |> 
   group_by(county, county_area) |> 
   summarise(
     n_stations = n(),
@@ -765,12 +768,14 @@ plot_grid(gg1, gg2, gg3, nrow = 1)
 ```
 
 
-### 9.6 National mean  
+### 9.6 National means  
 
 * Within county, weigh by catchment size  
 * Between countys, Weigh by county area    
 
+#### Straight-forward means, weighted by county area (no SE)
 ```{r}
+
 
 dat_index_national <- dat_index_county |> 
   summarise(
@@ -781,6 +786,89 @@ dat_index_national <- dat_index_county |>
 dat_index_national
 
 ```
+
+#### Marginal means, flood   
+```{r}
+
+library(emmeans)
+
+mod <- lm(
+  flom_indikator ~ county,
+  data = dat_indekser,
+  weights = areal_km2)
+emm <- emmeans(mod, ~ county)
+
+w <- df_county_area$county_area
+w <- w / sum(w)
+
+national <- contrast(
+  emm,
+  method = list(National = w)
+)
+
+summary(national)
+
+#  contrast estimate     SE  df t.ratio p.value
+#  National    0.938 0.0188 266  50.001 <0.0001
+
+```
+
+#### Marginal means, low-water   
+```{r}
+
+mod <- lm(
+  lavvann_indikator ~ county,
+  data = dat_indekser,
+  weights = areal_km2)
+emm <- emmeans(mod, ~ county)
+
+w <- df_county_area$county_area
+w <- w / sum(w)
+
+national <- contrast(
+  emm,
+  method = list(National = w)
+)
+
+summary(national)
+
+#  contrast estimate     SE  df t.ratio p.value
+#  National    0.938 0.0188 266  50.001 <0.0001
+
+```
+
+```{r}
+df_county_area <- as.data.frame(geo_points) |> 
+  group_by(county) |> 
+  summarise(county_area = first(county_area))
+summ1 <- summ1 |> 
+  left_join(df_county_area, 
+            by = join_by(county), relationship = "one-to-one")
+mod2 <- lm(
+  emmean ~ 1,
+  data = summ1,
+  weights = county_area)
+emm2 <- emmeans(mod2, ~ 1)
+summ2 <- summary(emm2)
+
+```
+
+
+```{r}
+
+library(emmeans)
+summary(mod)
+emmeans(mod, ~)
+
+mod <- lm(
+  flom_indikator ~ county,
+  data = dat_indekser,
+  weights = areal_km2)
+
+emmeans(mod, )
+
+```
+
 
 
 ## 10. Results
