@@ -792,6 +792,10 @@ dat_index_national
 
 library(emmeans)
 
+df_county_area <- as.data.frame(geo_points) |> 
+  group_by(county) |> 
+  summarise(county_area = first(county_area))
+
 mod <- lm(
   flom_indikator ~ county,
   data = dat_indekser,
@@ -832,43 +836,11 @@ national <- contrast(
 
 summary(national)
 
-#  contrast estimate     SE  df t.ratio p.value
-#  National    0.938 0.0188 266  50.001 <0.0001
+ # contrast estimate      SE  df t.ratio p.value
+ # National    0.986 0.00331 266 298.228 <0.0001
+   
 
 ```
-
-```{r}
-df_county_area <- as.data.frame(geo_points) |> 
-  group_by(county) |> 
-  summarise(county_area = first(county_area))
-summ1 <- summ1 |> 
-  left_join(df_county_area, 
-            by = join_by(county), relationship = "one-to-one")
-mod2 <- lm(
-  emmean ~ 1,
-  data = summ1,
-  weights = county_area)
-emm2 <- emmeans(mod2, ~ 1)
-summ2 <- summary(emm2)
-
-```
-
-
-```{r}
-
-library(emmeans)
-summary(mod)
-emmeans(mod, ~)
-
-mod <- lm(
-  flom_indikator ~ county,
-  data = dat_indekser,
-  weights = areal_km2)
-
-emmeans(mod, )
-
-```
-
 
 
 ## 10. Results
