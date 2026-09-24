@@ -104,34 +104,34 @@ plot_highflow <- function(seriestasjoner, flowstats, logscale = FALSE) {
 
 flom_indikator <- function(seriestasjoner, flowstats, logscale = FALSE) {
   combined <- merge(seriestasjoner, flowstats, by = "stasjonsnr")
-  combined$flom_indikator <- 1 - (combined$highflow_m3s - combined$highflow_mean) / combined$highflow_m3s
+  combined$flood_index <- 1 - (combined$highflow_m3s - combined$highflow_mean) / combined$highflow_m3s
   combined
 }
 
 kalkuler_indikatorer <- function(seriestasjoner, flowstats, logscale = FALSE) {
   combined <- merge(seriestasjoner, flowstats, by = "stasjonsnr")
-  combined$flom_indikator <- 1 - (combined$highflow_m3s - combined$highflow_mean) / combined$highflow_m3s
-  combined$lavvann_indikator <- with(combined, 1-(lowflow_mean-lowflow_m3s)/(highflow_mean-lowflow_m3s))
+  combined$flood_index <- 1 - (combined$highflow_m3s - combined$highflow_mean) / combined$highflow_m3s
+  combined$lowwater_index <- with(combined, 1-(lowflow_mean-lowflow_m3s)/(highflow_mean-lowflow_m3s))
   combined
 }
 
-plot_flom_indikator <- function(flom_indikator_data) {
-  hist(log10(flom_indikator_data$flom_indikator),
+plot_flood_index <- function(flood_index_data) {
+  hist(log10(flood_index_data$flood_index),
        breaks = 30,
-       xlab = "log10(flom_indikator)", main = "Fordeling av flom_indikator (log-skala)")
-  abline(v = 0, col = "red", lty = 2)  # flom_indikator = 1: målt middel flom lik Nevina-estimat
+       xlab = "log10(flood_index)", main = "Distribution of 'flood_index' (log-scale)")
+  abline(v = 0, col = "red", lty = 2)  # flood_u = 1: målt middel flom lik Nevina-estimat
 }
 
 
 plot_indikator <- function(indikator_data, indikator = 1) {
   if (indikator == 1){
-  hist(indikator_data$flom_indikator,
+  hist(indikator_data$flood_index,
        breaks = 30, log = "x",
-       xlab = "flom_indikator", main = "Fordeling av flom_indikator (log-skala)")
+       xlab = "flood_index", main = "Distribution of flood_index (log-scale)")
   } else {
-    hist(log10(indikator_data$lavvann_indikator),
+    hist(log10(indikator_data$lowwater_index),
          breaks = 30,
-         xlab = "log10(lavvann_indikator)", main = "Fordeling av lavvann_indikator (log-skala)")
+         xlab = "log10(lowwater_index)", main = "Distribution of lowwater_index (log-scale)")
   }
   abline(v = 1, col = "red", lty = 2)  # indikator = 1
 }

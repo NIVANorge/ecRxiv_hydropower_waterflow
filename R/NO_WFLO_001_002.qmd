@@ -506,7 +506,13 @@ stations |>
 
 ```{r}
 
-geo_points <- st_read("../data/geo_points.gpkg")
+geo_points <- sf::read_sf("../data/geo_points.gpkg")  
+
+county_order  <- c(
+  "Finnmark", "Troms", "Nordland", "Trøndelag", 
+  "Møre og Romsdal", "Vestland", "Rogaland",
+  "Buskerud", "Telemark", "Innlandet", 
+  "Agder", "Vestfold", "Oslo", "Akershus", "Østfold")
 
 ```
 
@@ -532,6 +538,7 @@ Caching is also activated (from the top YAML), meaning that rendering to html wi
 
 For each station and year, we find the annual flood value (maximum  river flow) and the winter low-flow value (the 5% of the months October to April). Then we find the mean and standard deviation of those values for every station.  
 ```{r, calculate_observed_stats}
+
 # get observed means 
 flow_high <- yearly_highflow(dat)
 flow_winter <- yearly_lowflow(dat)
@@ -548,9 +555,11 @@ flow_statistics |>
 ```
 
 
-### 9.2 Calculate indices (part 1)  
+### 9.2 Make indicator data  
 
-The indices are calculated by comparing the observed statistics of flood and low-water flow with NEVINA's estimates of the same parameters. The indicators are defined as follows:  
+#### a. Calculate indicators      
+
+The indicators are calculated by comparing the observed statistics of flood and low-water flow with NEVINA's estimates of the same parameters. The indicators are defined as follows:  
   
 The flood indicator for river *i* is  
 
@@ -561,7 +570,7 @@ $$
 $$
 
 where $Q_{\text{model,high,i}}$ is the modelled natural flood of river *i* from NEVINA, and $\overline{Q_{\text{obs,high,i}}}$ is the mean of the  observed flood for the same river. 
-  combined$lavvann_indikator <- with(combined, 1-(lowflow_mean-lowflow_m3s)/(highflow_mean-lowflow_m3s))
+  combined$lowwater_index <- with(combined, 1-(lowflow_mean-lowflow_m3s)/(highflow_mean-lowflow_m3s))
   
 The low-water indicator for river *i* depends on the both the modelled natural low-water flow as well as the observed mean flood. If the observed low-water flow is equal to the modelled natural low-water flow, the indicator is 1. If the observed low-water flow is equal to the observed flood flow, the indicator is 0. 
 
@@ -580,20 +589,301 @@ We have denoted the latter index as "preliminary" as it appears to be biased, an
 
 # indicator 001: effect of hydropower on floods and low water  
 # indicator 002, preliminary (unadjusted) version: effect of hydropower on low water  
-dat_indekser <- kalkuler_indikatorer(
+dat_indekser_1 <- kalkuler_indikatorer(
   flowstats = flow_statistics, 
   seriestasjoner = stations) |> 
   mutate(log_areal = log10(areal_km2))
 
-ggplot(dat_indekser, aes(flom_indikator)) +
+ggplot(dat_indekser, aes(flood_index)) +
   geom_histogram() +
   scale_x_log10()
 
 ```
 
-### 9.3 Examine flood indices at river level
+#### b. Add geodata and county    
+
+```{r}
+
+dat_indekser <- dat_indekser_1 |> 
+  left_join(geo_points, 
+            by = join_by(stasjonsnr), relationship = "many-to-one")  |> 
+  mutate(county = factor(county, levels = county_order))
+
+```
+
+
+#### c. Add groupings  
+
+```{r}
+dat_indekser <- dat_indekser |> 
+  mutate(
+    region = case_when(
+      county %in% "Finnmark" ~ "Finnmark",
+      county %in% c("Troms", "Finnmark") ~ "Troms og Nordland",
+      county %in% c("Trøndelag") ~ "Trøndelag",
+      county %in% c("Møre og Romsdal","Vestland","Rogaland") ~ "Vestlandet",
+      county %in% c("Agder","Telemark") ~ "Agder og Telemark",
+      TRUE ~ "Østlandet"),
+    altitude_limit = case_when(
+      region %in% "Finnmark" ~ 200,
+      TRUE ~ 200),
+    Q_limit = 5,
+    group1 = case_when(
+      altitude < altitude_limit ~ "low",
+      altitude >= altitude_limit ~ "high"), 
+    group2 = case_when(
+      altitude < altitude_limit & normalQ_m3s >= Q_limit ~ "low,big",
+      altitude < altitude_limit & normalQ_m3s < Q_limit ~ "low,small",
+      altitude >= altitude_limit & normalQ_m3s >= Q_limit ~ "high,big",
+      altitude >= altitude_limit & normalQ_m3s < Q_limit ~ "high,small"),
+    dams = ifelse(index_dams == 0, "no dams", "dams"),
+  )
+
+```
+
+#### Data set with only low-altitude "big" rivers  
+```{r}
+
+dat_indekser2 <- dat_indekser |> filter(group2 %in% "low,big")
+
+```
+
+
+```{r}
+if (FALSE){
+  library(leaflet)
+  dat_leaflet <- dat_indekser |> 
+  leaflet() 
+}
+```
+
+
+### 9.3. Maps and plots  
+
+#### a. Map 1   
+```{r}
+
+ggplot(dat_indekser) + 
+  geom_sf(aes(geometry = geom, fill = altitude, size = normalQ_m3s), 
+          shape = 21, alpha = 0.3) +
+  scale_fill_viridis_b() +
+  theme_bw()
+
+```
+
+#### b. Map 2   
+```{r}
+
+ggplot(dat_indekser) + 
+  geom_sf(aes(geometry = geom, fill = index_dams, size = normalQ_m3s), 
+          shape = 21, alpha = 0.3)+
+  scale_fill_viridis_b(
+    breaks = c(0,0.05,0.1,0.15,0.2,0.25,0.5,1)) +
+  theme_bw()
+
+```
+
+#### c. Map 3   
+```{r}
+
+ggplot(dat_indekser) + 
+  geom_sf(aes(geometry = geom, fill = group2, size = normalQ_m3s), 
+          shape = 21, alpha = 0.2) +
+  scale_fill_viridis_d() +
+  theme_bw()
+
+```
+
+
+#### d. Altitude vs dams 
+```{r}
+
+ggplot(dat_indekser, aes(altitude, log(index_dams+1), 
+                         fill = normalQ_m3s,
+                         size = areal_km2)) +
+  geom_point(shape = 21) +
+  # scale_x_log10() +
+  scale_fill_viridis_b() +
+  facet_wrap(vars(region))
+  
+```
+
+#### Simple mean and weighted
+```{r}
+
+dat_indekser |> 
+  mutate(
+    dams = ifelse(index_dams == 0, "no dams", "dams"),
+    altitude_limit = case_when(
+      region %in% "Finnmark" ~ 200,
+      TRUE ~ 200),
+    Q_limit = 10,
+    group1 = case_when(
+      altitude < altitude_limit ~ "low",
+      altitude >= altitude_limit ~ "high"), 
+    group2 = case_when(
+      altitude < altitude_limit & normalQ_m3s >= Q_limit ~ "low,big",
+      altitude < altitude_limit & normalQ_m3s < Q_limit ~ "low,small",
+      altitude >= altitude_limit & normalQ_m3s >= Q_limit ~ "high,big",
+      altitude >= altitude_limit & normalQ_m3s < Q_limit ~ "high,small")
+  ) |> 
+  # group_by(group1, dams) |> 
+  group_by(group2) |> 
+  summarise(
+    flood_index_u = mean(flood_index),
+    flood_index_w = weighted.mean(flood_index, w=areal_km2))
+
+```
+
+### 9.3 Examinations  
+
+#### a. Examine flood indices vs. indices of hydropower  
 
 As shown below (figure a), the index of effect of hydropower on floods varies around 1 for rivers were `index_dams` is zero (i.e. there are no dams in the catchment of the station). As the amount of dams increases, the index goes towards lower numbers. Thus, the flood indices appear to work well. As we see from figure b, `index_regul` (measuring all sorts of hydropower development, including run-of-river hydropower plants that has no large dam) is much less correlated to the flood indicator, indicating that this index is trule closely connected to presence of large dams upstream.
+
+
+```{r}
+
+# 1. index_dams
+
+mod <- lm(flood_index ~ index_dams, 
+          data = dat_indekser |> filter(index_dams > 0), 
+          na.action = na.omit)
+
+gg1 <- ggplot(dat_indekser, aes(index_dams, flood_index)) +
+  geom_point() +
+  geom_smooth(
+    data = dat_indekser |> filter(flood_index > 0),
+    method = "lm", linetype = "dashed", color = "red3") +
+  scale_y_log10() +
+  labs(x = "Index of hydropower dams", y = "Flood indicator") +
+  labs(subtitle = paste("Model: ", get_model_summ(mod), 
+       "\nNote: regression fitted to catchments with dams")) +
+  theme(plot.subtitle = element_text(size = 7))
+
+# 2. index_regul
+
+mod <- lm(flood_index ~ index_regul, 
+          data = dat_indekser |> filter(index_regul > 0), 
+          na.action = na.omit)
+
+gg2 <- ggplot(dat_indekser, aes(index_regul, flood_index)) +
+  geom_point() +
+  geom_smooth(
+    data = dat_indekser |> filter(index_regul > 0),
+    method = "lm", linetype = "dashed", color = "red3") +
+  scale_y_log10() +
+  labs(x = "Index of hydropower development", y = "Flood indicator") +
+  labs(subtitle = paste("Model: ", get_model_summ(mod), 
+       "\nNote: regression fitted to catchments with hydropower")) +
+  theme(plot.subtitle = element_text(size = 7))
+
+plot_grid(gg1, gg2, nrow = 1)
+
+```
+
+#### b. Same, for low, big rivers  
+
+```{r}
+
+# as above, but replace "dat_indekser" with "dat_indekser2"
+
+# 1. index_dams
+
+mod <- lm(flood_index ~ index_dams, 
+          data = dat_indekser2 |> filter(index_dams > 0), 
+          na.action = na.omit)
+
+gg1 <- ggplot(dat_indekser2, aes(index_dams, flood_index)) +
+  geom_point() +
+  geom_smooth(
+    data = dat_indekser2 |> filter(flood_index > 0),
+    method = "lm", linetype = "dashed", color = "red3") +
+  scale_y_log10() +
+  labs(x = "Index of hydropower dams", y = "Flood indicator") +
+  labs(subtitle = paste("Model: ", get_model_summ(mod), 
+       "\nNote: regression fitted to catchments with dams")) +
+  theme(plot.subtitle = element_text(size = 7))
+
+# 2. index_regul
+
+mod <- lm(flood_index ~ index_regul, 
+          data = dat_indekser2 |> filter(index_regul > 0), 
+          na.action = na.omit)
+
+gg2 <- ggplot(dat_indekser2, aes(index_regul, flood_index)) +
+  geom_point() +
+  geom_smooth(
+    data = dat_indekser2 |> filter(index_regul > 0),
+    method = "lm", linetype = "dashed", color = "red3") +
+  scale_y_log10() +
+  labs(x = "Index of hydropower development", y = "Flood indicator") +
+  labs(subtitle = paste("Model: ", get_model_summ(mod), 
+       "\nNote: regression fitted to catchments with hydropower")) +
+  theme(plot.subtitle = element_text(size = 7))
+
+plot_grid(gg1, gg2, nrow = 1)
+
+```
+
+
+
+
+
+
+
+```{r}
+
+# 1. index_dams
+
+mod <- lm(flood_index ~ index_dams, 
+          data = dat_indekser |> filter(index_dams > 0,
+                                        group2 == "low,big"), 
+          na.action = na.omit)
+
+gg1 <- ggplot(dat_indekser |> 
+                filter(group2 == "low,big"), 
+              aes(index_dams, flood_index)) +
+  geom_point() +
+  geom_smooth(
+    data = dat_indekser |> filter(flood_index > 0),
+    method = "lm", linetype = "dashed", color = "red3") +
+  scale_y_log10() +
+  labs(x = "Index of hydropower dams", y = "Flood indicator") +
+  labs(subtitle = paste("Model: ", get_model_summ(mod), 
+       "\nNote: regression fitted to catchments with dams")) +
+  theme(plot.subtitle = element_text(size = 7))
+
+# 2. index_regul
+
+mod <- lm(flood_index ~ index_regul, 
+          data = dat_indekser |> filter(index_regul > 0), 
+          na.action = na.omit)
+
+gg2 <- ggplot(dat_indekser |> 
+                filter(group2 == "low,big"), 
+              aes(index_regul, flood_index)) +
+  geom_point() +
+  geom_smooth(
+    data = dat_indekser |> filter(index_regul > 0),
+    method = "lm", linetype = "dashed", color = "red3") +
+  scale_y_log10() +
+  labs(x = "Index of hydropower development", y = "Flood indicator") +
+  labs(subtitle = paste("Model: ", get_model_summ(mod), 
+       "\nNote: regression fitted to catchments with hydropower")) +
+  theme(plot.subtitle = element_text(size = 7))
+
+plot_grid(gg1, gg2, nrow = 1)
+
+
+
+```
+
+
+
+#### b. Examine low-water indices vs. indices of hydropower  
+
+The index of effect of hydropower on low-water shows a smilirar pattern, with values around 1 when there are no dams in the catchment of the station. It appears to be more closely linked to the amount of hydropower development in general than to the amount of dams in the catchment. 
 
 ```{r}
 
@@ -609,14 +899,14 @@ get_model_summ <- function(model) {
 
 # 1. index_dams
 
-mod <- lm(lavvann_indikator ~ index_dams, 
+mod <- lm(lowwater_index ~ index_dams, 
           data = dat_indekser |> filter(index_dams > 0), 
           na.action = na.omit)
 
-gg1 <- ggplot(dat_indekser, aes(index_dams, lavvann_indikator)) +
+gg1 <- ggplot(dat_indekser, aes(index_dams, lowwater_index)) +
   geom_point() +
   geom_smooth(
-    data = dat_indekser |> filter(lavvann_indikator > 0),
+    data = dat_indekser |> filter(lowwater_index > 0),
     method = "lm", linetype = "dashed", color = "red3") +
   scale_y_log10() +
   labs(x = "Index of hydropower dams", y = "Low-water indicator") +
@@ -626,11 +916,11 @@ gg1 <- ggplot(dat_indekser, aes(index_dams, lavvann_indikator)) +
 
 # 2. index_regul
 
-mod <- lm(lavvann_indikator ~ index_regul, 
+mod <- lm(lowwater_index ~ index_regul, 
           data = dat_indekser |> filter(index_regul > 0), 
           na.action = na.omit)
 
-gg2 <- ggplot(dat_indekser, aes(index_regul, lavvann_indikator)) +
+gg2 <- ggplot(dat_indekser, aes(index_regul, lowwater_index)) +
   geom_point() +
   geom_smooth(
     data = dat_indekser |> filter(index_regul > 0),
@@ -645,7 +935,8 @@ plot_grid(gg1, gg2, nrow = 1)
 
 ```
 
-### 9.4 Examine observed and modelled natural low-water values  
+
+#### c. Observed and modelled natural low-water values  
 ```{r}
 ggplot(dat_indekser, 
        aes(lowflow_m3s, lowflow_mean)) +
@@ -658,15 +949,13 @@ ggplot(dat_indekser,
 ```
 
 
-### 9.5 Examine low-water index
-
-The index of effect of hydropower on low-water shows a smilirar pattern, with values around 1 when there are no dams in the catchment of the station. It appears to be more closely linked to the amount of hydropower development in general than to the amount of dams in the catchment. 
+#### d. Observed and modelled natural low-water values
 
 ```{r}
 
-# quantile(dat_indekser$lavvann_indikator_prelim)
+# quantile(dat_indekser$lowwater_index_prelim)
 dat_indekser |> 
-  ggplot(aes(lowflow_m3s, lowflow_mean, fill = lavvann_indikator)) +
+  ggplot(aes(lowflow_m3s, lowflow_mean, fill = lowwater_index)) +
   geom_point(shape = 21, size = rel(2)) +
   scale_fill_fermenter(type = "div", breaks = seq(0.75,1.1,0.05)) +
   geom_point(aes(y=highflow_mean), shape = 21, size = rel(2), fill = "red") +
@@ -676,46 +965,198 @@ dat_indekser |>
 
 ```
 
+### National means  
+
+#### Flood: adjust indicator  
+
+* We select relatively low-lying rivers over a certain size   
+* We make an adjusted indicator "flood_index_adj" that is 1 for the mean of rivers with no dams in their catchment, and 0 for 
+
+```{r}
+
+# relatively low-lying rivers over a certain size = data set "dat_indekser2"  
+
+# Reference level 1 = mean for rivers without dams  
+ref_1 <- mean(subset(dat_indekser2, dams == "no dams")$flood_index)
+# Reference level 0 is set to 0.2 (205 ov original flood)  
+ref_0 <- 0.20
+
+# table(dat_indekser2$dams)
+dat_indekser2 <- dat_indekser2 |> 
+  mutate(
+    flood_index_adj = (flood_index-zeropoint)/(mean_nodams-zeropoint),
+    dam_weight = ifelse(dams == "dams", 0.7, 0.3)
+  )
+
+# check
+mean(subset(dat_indekser2, dams == "no dams")$flood_index_adj)
+range(dat_indekser2$flood_index_adj)
+
+```
+
+
+
 ```{r}
 
 
-# 1. index_dams
+# table(dat_indekser2$dams)
+dat_indekser2 <- dat_indekser2 |> 
+  mutate(
+    flood_index_adj = (flood_index-zeropoint)/(mean_nodams-zeropoint),
+    dam_weight = ifelse(dams == "dams", 0.7, 0.3)
+  )
 
-mod <- lm(flom_indikator ~ index_dams, 
-          data = dat_indekser |> filter(index_dams > 0), 
-          na.action = na.omit)
 
-gg1 <- ggplot(dat_indekser, aes(index_dams, flom_indikator)) +
-  geom_point() +
-  geom_smooth(
-    data = dat_indekser |> filter(flom_indikator > 0),
-    method = "lm", linetype = "dashed", color = "red3") +
-  scale_y_log10() +
-  labs(x = "Index of hydropower dams", y = "Flood indicator") +
-  labs(subtitle = paste("Model: ", get_model_summ(mod), 
-       "\nNote: regression fitted to catchments with dams")) +
-  theme(plot.subtitle = element_text(size = 7))
+# unweighted mean
+mod <- lm(flood_index_adj ~ 1, dat_indekser2)
+emmeans(mod, ~1)
 
-# 2. index_regul
-
-mod <- lm(flom_indikator ~ index_regul, 
-          data = dat_indekser |> filter(index_regul > 0), 
-          na.action = na.omit)
-
-gg2 <- ggplot(dat_indekser, aes(index_regul, flom_indikator)) +
-  geom_point() +
-  geom_smooth(
-    data = dat_indekser |> filter(index_regul > 0),
-    method = "lm", linetype = "dashed", color = "red3") +
-  scale_y_log10() +
-  labs(x = "Index of hydropower development", y = "Flood indicator") +
-  labs(subtitle = paste("Model: ", get_model_summ(mod), 
-       "\nNote: regression fitted to catchments with hydropower")) +
-  theme(plot.subtitle = element_text(size = 7))
-
-plot_grid(gg1, gg2, nrow = 1)
+mod <- lm(flood_index_adj ~ 1, dat_indekser2, weights = dam_weight)
+summary(mod)
 
 ```
+
+
+### 9.4 Spatial aspects  
+
+#### Map 1   
+```{r}
+
+ggplot(dat_indekser) + 
+  geom_sf(aes(geometry = geom, fill = altitude), shape = 21) +
+  scale_fill_viridis_b()
+
+```
+
+#### Map 2   
+```{r}
+
+ggplot(dat_indekser) + 
+  geom_sf(aes(geometry = geom, fill = index_dams), shape = 21) +
+  scale_fill_viridis_b(
+    breaks = c(0,0.05,0.1,0.15,0.2,0.25,0.5,1))
+
+```
+
+#### Altitude vs dams 
+```{r}
+dat_indekser <- dat_indekser |> 
+  mutate(
+    region = case_when(
+      county %in% "Finnmark" ~ "Finnmark",
+      county %in% c("Troms", "Finnmark") ~ "Troms og Nordland",
+      county %in% c("Trøndelag") ~ "Trøndelag",
+      county %in% c("Møre og Romsdal","Vestland","Rogaland") ~ "Vestlandet",
+      county %in% c("Agder","Telemark") ~ "Agder og Telemark",
+      TRUE ~ "Østlandet"),
+    altitude_limit = case_when(
+      region %in% "Finnmark" ~ 200,
+      TRUE ~ 200),
+    Q_limit = 10,
+    group = case_when(
+      altitude < altitude_limit & normalQ_m3s >= Q_limit ~ "low,big",
+      altitude < altitude_limit & normalQ_m3s < Q_limit ~ "low,small",
+      altitude >= altitude_limit & normalQ_m3s >= Q_limit ~ "high,big",
+      altitude >= altitude_limit & normalQ_m3s < Q_limit ~ "high,small")
+  ) 
+
+ggplot(dat_indekser, aes(altitude, log(index_dams+1), 
+                         fill = normalQ_m3s,
+                         size = areal_km2)) +
+  geom_point(shape = 21) +
+  # scale_x_log10() +
+  scale_fill_viridis_b() +
+  facet_wrap(vars(region))
+  
+```
+
+#### Simple mean and weighted
+```{r}
+
+dat_indekser |> 
+  mutate(
+    dams = ifelse(index_dams == 0, "no dams", "dams"),
+    altitude_limit = case_when(
+      region %in% "Finnmark" ~ 200,
+      TRUE ~ 200),
+    Q_limit = 10,
+    group1 = case_when(
+      altitude < altitude_limit ~ "low",
+      altitude >= altitude_limit ~ "high"), 
+    group2 = case_when(
+      altitude < altitude_limit & normalQ_m3s >= Q_limit ~ "low,big",
+      altitude < altitude_limit & normalQ_m3s < Q_limit ~ "low,small",
+      altitude >= altitude_limit & normalQ_m3s >= Q_limit ~ "high,big",
+      altitude >= altitude_limit & normalQ_m3s < Q_limit ~ "high,small")
+  ) |> 
+  # group_by(group1, dams) |> 
+  group_by(group2) |> 
+  summarise(
+    flood_index_u = mean(flood_index),
+    flood_index_w = weighted.mean(flood_index, w=areal_km2))
+
+```
+
+
+#### 
+```{r}
+
+ggplot(dat_indekser, aes(areal_km2, normalQ_m3s, 
+                         fill = county)) +
+  geom_point(shape = 21) +
+  scale_x_log10() +
+  scale_y_log10()
+
+ggplot(dat_indekser, aes(areal_km2, normalQ_m3s, 
+                         fill = index_dams)) +
+  geom_point(shape = 21) +
+  scale_x_log10() +
+  scale_y_log10() +
+  scale_fill_viridis_b(
+    breaks = c(0,0.05,0.1,0.15,0.2,0.25,0.5,1))
+
+ggplot(dat_indekser, aes(altitude, normalQ_m3s, 
+                         fill = index_dams)) +
+  geom_point(shape = 21) +
+  scale_x_log10() +
+  scale_y_log10() +
+  scale_fill_viridis_b(
+    breaks = c(0,0.05,0.1,0.15,0.2,0.25,0.5,1))
+
+```
+
+
+#### Plot altitude by county  
+```{r}
+quantile(dat_indekser$index_dams, seq(0,1,0.1))
+quantile(dat_indekser$areal_km2, seq(0,1,0.1))
+quantile(dat_indekser$normalQ_m3s, seq(0,1,0.1))
+
+ggplot(dat_indekser, aes(altitude, county, fill = index_dams)) +
+  geom_point(shape = 21) +
+  scale_fill_viridis_b(
+    breaks = c(0,0.05,0.1,0.15,0.2,0.25,0.5,1))  
+
+
+
+```
+
+
+#### Map    
+
+```{r}
+
+if (FALSE){
+  library(leaflet)
+  sf::st_coordinates(dat_indekser)
+  dat_indekser$county |> str()
+    
+}
+
+
+```
+
+#### Check altitude  
 
 
 ### 9.6 By county   
@@ -724,27 +1165,17 @@ We weight the average by either catchment area or log(catchment area), so small 
 
 ```{r}
 
-geo_points <- sf::read_sf("../data/geo_points.gpkg")  
-
-county_order  <- c("Finnmark", "Troms", "Nordland", "Trøndelag", "Møre og Romsdal", 
-  "Vestland", "Buskerud", "Innlandet", 
-  "Rogaland", "Agder",  "Telemark", "Vestfold", "Oslo","Akershus", "Østfold")
-
-dat_indekser <- dat_indekser |> 
-  left_join(as.data.frame(geo_points), 
-            by = join_by(stasjonsnr), relationship = "many-to-one")
-
 get_indicators <- function(data){
   data |>
   group_by(county, county_area) |> 
   summarise(
     n_stations = n(),
-    flom_indikator_unweight = mean(flom_indikator),
-    flom_indikator_weighted = weighted.mean(flom_indikator, w = areal_km2),
-    flom_indikator_logweighted = weighted.mean(flom_indikator, w = log(areal_km2)),
-    lavvann_indikator_unweight = mean(lavvann_indikator),
-    lavvann_indikator_weighted = weighted.mean(lavvann_indikator, w = areal_km2),
-    lavvann_indikator_logweighted = weighted.mean(lavvann_indikator, w = log(areal_km2)),
+    flood_index_unweight = mean(flood_index),
+    flood_index_weighted = weighted.mean(flood_index, w = areal_km2),
+    flood_index_logweighted = weighted.mean(flood_index, w = log(areal_km2)),
+    lowwater_index_unweight = mean(lowwater_index),
+    lowwater_index_weighted = weighted.mean(lowwater_index, w = areal_km2),
+    lowwater_index_logweighted = weighted.mean(lowwater_index, w = log(areal_km2)),
     .groups = "drop"
   ) |> 
   mutate(county = factor(county, levels = county_order)) |> 
@@ -760,15 +1191,15 @@ dat_index_county_min20 <- dat_indekser |> filter(normalQ_m3s >= 20) |> get_indic
 ```{r}
 plot_flood_county <- function(data){
   gg1 <- ggplot((data) |> mutate(county = fct_rev(county)), 
-                aes(flom_indikator_unweight, county)) +
+                aes(flood_index_unweight, county)) +
     geom_col() +
     geom_vline(xintercept = 1, color = "red3")
   gg2 <- ggplot((data) |> mutate(county = fct_rev(county)), 
-                aes(flom_indikator_weighted, county)) +
+                aes(flood_index_weighted, county)) +
     geom_col() +
     geom_vline(xintercept = 1, color = "red3")
   gg3 <- ggplot((data) |> mutate(county = fct_rev(county)), 
-                aes(flom_indikator_logweighted, county)) +
+                aes(flood_index_logweighted, county)) +
     geom_col() +
     geom_vline(xintercept = 1, color = "red3")
   plot_grid(gg1, gg2, gg3, nrow = 1)
@@ -784,15 +1215,15 @@ plot_flood_county(dat_index_county_min20)
 ```{r}
 plot_lowwater_county <- function(data){
   gg1 <- ggplot(data |> mutate(county = fct_rev(county)), 
-                aes(lavvann_indikator_unweight, county)) +
+                aes(lowwater_index_unweight, county)) +
     geom_col() +
     geom_vline(xintercept = 1, color = "red3")
   gg2 <- ggplot(data |> mutate(county = fct_rev(county)), 
-                aes(lavvann_indikator_weighted, county)) +
+                aes(lowwater_index_weighted, county)) +
     geom_col() +
     geom_vline(xintercept = 1, color = "red3")
   gg3 <- ggplot(data |> mutate(county = fct_rev(county)), 
-                aes(lavvann_indikator_logweighted, county)) +
+                aes(lowwater_index_logweighted, county)) +
     geom_col() +
     geom_vline(xintercept = 1, color = "red3")
   plot_grid(gg1, gg2, gg3, nrow = 1)
@@ -813,11 +1244,21 @@ plot_lowwater_county(dat_index_county_min20)
 
 dat_index_national <- dat_index_county |> 
   summarise(
-    flom_indikator = weighted.mean(flom_indikator_weighted, w=county_area),
-    lavvann_indikator = weighted.mean(lavvann_indikator_weighted, w=county_area)
+    flood_index = weighted.mean(flood_index_weighted, w=county_area),
+    lowwater_index = weighted.mean(lowwater_index_weighted, w=county_area)
   )
 
 dat_index_national  
+
+```
+
+```{r}
+
+mod <- lm(
+    flood_index ~ county + dams,
+    data = data,
+    weights = areal_km2)
+  emm <- emmeans(mod, ~ county + dams)
 
 ```
 
@@ -826,40 +1267,61 @@ dat_index_national
 
 library(emmeans)
 
+
+
+
 df_county_area <- as.data.frame(geo_points) |> 
   group_by(county) |> 
-  summarise(county_area = first(county_area))
+  summarise(county_area = first(county_area)) |> 
+  mutate(county = factor(county, county_order)) |>
+  arrange(county)
 
 # |> 
 #   as.data.frame()
 # rownames(df_county_area) <- df_county_area$county
 
 get_nationalstats_flood <- function(data){
+  
   mod <- lm(
-    flom_indikator ~ county,
+    flood_index ~ county + dams,
     data = data,
     weights = areal_km2)
-  emm <- emmeans(mod, ~ county)
+  emm <- emmeans(mod, ~ county + dams)
+
+  mod <- lm(
+    flood_index ~ dams,
+    data = data,
+    weights = areal_km2)
+  emm <- emmeans(mod, ~ dams)
   
   areas <- data |> 
     distinct(county) |> 
     left_join(df_county_area) |> 
     arrange(county) |> 
     pull(county_area)
+  
   #   w <- df_county_area$county_area
   # w <- w / sum(w)
-  w <- areas/sum(areas)
+  # w <- areas/sum(areas)
   
+  # areas_dams <- c(areas*0.7, areas*0.3)
+  # w <- areas_dams/sum(areas_dams)
+  
+  w <- c(0.7, 0.3)
+
   national <- contrast(
     emm,
     method = list(National = w)
   )
-  
   summary(national)
 }
 
 # debugonce(get_nationalstats_flood)
-dat_indekser |> get_nationalstats_flood()
+# dat_indekser |> get_nationalstats_flood()
+dat_indekser2 |> get_nationalstats_flood()
+
+
+
 dat_indekser |> filter(normalQ_m3s >= 10) |> get_nationalstats_flood()
 dat_indekser |> filter(normalQ_m3s >= 20) |> get_nationalstats_flood()
 
@@ -873,7 +1335,7 @@ dat_indekser |> filter(normalQ_m3s >= 20) |> get_nationalstats_flood()
 ```{r}
 
 mod <- lm(
-  lavvann_indikator ~ county,
+  lowwater_index ~ county,
   data = dat_indekser,
   weights = areal_km2)
 emm <- emmeans(mod, ~ county)
