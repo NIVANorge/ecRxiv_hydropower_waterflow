@@ -400,10 +400,15 @@ We use the observed daily riverflow from the last 20 years that data are availab
 ```{r read_observed_riverflow}
 
 # read data and station data (the latter includes NEVINA calculations)  
-dat <- read_seriedata("../data/seriedata.csv") |> 
-  mutate(
-    year = year(date),
-    month = month(date))
+
+# run if "dat" is not defined in memory
+if (!"dat" %in% ls()){
+  
+  dat <- read_seriedata("../data/seriedata.csv") |> 
+    mutate(
+      year = year(date),
+      month = month(date))
+}
 
 cat("Number of stations:", length(unique(dat$stasjonsnr)), "\n")
 cat("Time coverage:", min(dat$date), "-", max(dat$date), "\n")
@@ -618,35 +623,9 @@ dat_indekser <- dat_indekser_1 |>
 
 
 
-### 9.3. Maps and plots  
+### 9.3. Tables, maps and plots  
 
-#### a. Map 1   
-```{r}
-
-ggplot(dat_indekser) + 
-  geom_sf(aes(geometry = geom, fill = altitude, size = normalQ_m3s), 
-          shape = 21, alpha = 0.4) +
-  scale_fill_viridis_b() +
-  theme_bw()
-
-```
-
-#### b. Map 2   
-```{r}
-
-ggplot(dat_indekser) + 
-  geom_sf(aes(geometry = geom, fill = index_dams, size = normalQ_m3s), 
-          shape = 21, alpha = 0.4)+
-  scale_fill_viridis_b(
-    breaks = c(0,0.05,0.1,0.15,0.2,0.25,0.5,1)) +
-  theme_bw()
-
-```
-
-
-
-
-#### e. Table of river size and altitude
+#### a. Table of river size and altitude
 ```{r}
 # cut with non-scientific formatting 
 cut_noscient <- function(x, breaks){
@@ -675,16 +654,215 @@ dat_indekser |>
   ) %>% 
   xtabs(~`water flow (m3/s)` + altitude, .)
 
+tab <- dat_indekser |> 
+  mutate(
+    altitude = cut_noscient(altitude, breaks = c(0,200,500,1300)),
+    `water flow (m3/s)` = cut(normalQ_m3s, breaks = c(0,5,20,50,100,300))
+  ) %>% 
+  xtabs(~`water flow (m3/s)` + altitude + (index_dams==0), .)
+
+tab[,,1]
+tab[,,2]
+tab_n <- tab[,,1] + tab[,,2]
+tab_p <- 100*round(tab[,,2]/(tab[,,1] + tab[,,2]), 3)
+
+tab_comb <- matrix("", dim(tab)[1], dim(tab)[2])
+rownames(tab_comb) <- 1:5
+nr = dim(tab)[1]
+nc = dim(tab)[2]
+for (i in 1:nr){
+  for (j in 1:nc){
+    tab_comb[i,j] <- paste0(tab_n[i,j], " / ", tab_p[i,j])
+  }
+}
+tab_comb |> knitr::kable()
+  
+dat_indekser |> 
+  mutate(
+    altitude = cut_noscient(altitude, breaks = c(0,200,500,1300)),
+    `water flow (m3/s)` = cut(normalQ_m3s, breaks = c(0,5,20,50,100,300))
+  ) %>% 
+  xtabs(~`water flow (m3/s)` + altitude , .)
+
 ```
 
 
-### 9.4 Choose subset  
+#### b. Map 1   
+```{r}
+
+ggplot(dat_indekser) + 
+  geom_sf(aes(geometry = geom, fill = altitude, size = normalQ_m3s), 
+          shape = 21, alpha = 0.4) +
+  scale_fill_viridis_b() +
+  theme_bw()
+
+```
+
+#### c. Map 2   
+```{r}
+
+ggplot(dat_indekser) + 
+  geom_sf(aes(geometry = geom, fill = index_dams, size = normalQ_m3s), 
+          shape = 21, alpha = 0.4)+
+  scale_fill_viridis_b(
+    breaks = c(0,0.05,0.1,0.15,0.2,0.25,0.5,1)) +
+  theme_bw()
+
+```
+
+
+
+#### d. Observed and modelled natural flood values  
+```{r}
+
+ggplot(dat_indekser, 
+       aes(highflow_m3s, highflow_mean)) +
+  geom_point(shape = 21, size = rel(2), fill = "red") +
+  geom_point(aes(y=lowflow_m3s), shape = 21, size = rel(2), fill = "blue2") +
+  geom_abline(intercept = 0, slope = 1) +
+  scale_x_log10() +
+  scale_y_log10()
+
+```
+
+#### e. Examine flood indices vs. indices of hydropower  
+
+As shown below (figure a), the index of effect of hydropower on floods varies around 1 for rivers were `index_dams` is zero (i.e. there are no dams in the catchment of the station). As the amount of dams increases, the index goes towards lower numbers. Thus, the flood indices appear to work well. As we see from figure b, `index_regul` (measuring all sorts of hydropower development, including run-of-river hydropower plants that has no large dam) is much less correlated to the flood indicator, indicating that this index is trule closely connected to presence of large dams upstream.
+
+
+```{r}
+
+# 1. index_dams
+
+mod <- lm(flood_index ~ index_dams, 
+          data = dat_indekser |> filter(index_dams > 0), 
+          na.action = na.omit)
+
+gg1 <- ggplot(dat_indekser, aes(index_dams, flood_index)) +
+  geom_point() +
+  geom_smooth(
+    data = dat_indekser |> filter(flood_index > 0),
+    method = "lm", linetype = "dashed", color = "red3") +
+  scale_y_log10() +
+  labs(x = "Index of hydropower dams", y = "Flood indicator") +
+  labs(subtitle = paste("Model: ", get_model_summ(mod), 
+       "\nNote: regression fitted to catchments with dams")) +
+  theme(plot.subtitle = element_text(size = 7))
+
+# 2. index_regul
+
+mod <- lm(flood_index ~ index_regul, 
+          data = dat_indekser |> filter(index_regul > 0), 
+          na.action = na.omit)
+
+gg2 <- ggplot(dat_indekser, aes(index_regul, flood_index)) +
+  geom_point() +
+  geom_smooth(
+    data = dat_indekser |> filter(index_regul > 0),
+    method = "lm", linetype = "dashed", color = "red3") +
+  scale_y_log10() +
+  labs(x = "Index of hydropower development", y = "Flood indicator") +
+  labs(subtitle = paste("Model: ", get_model_summ(mod), 
+       "\nNote: regression fitted to catchments with hydropower")) +
+  theme(plot.subtitle = element_text(size = 7))
+
+plot_grid(gg1, gg2, nrow = 1)
+
+```
+
+
+
+#### f1. Observed and modelled natural low-water values  
+```{r}
+ggplot(dat_indekser, 
+       aes(lowflow_m3s, lowflow_mean)) +
+  geom_point(shape = 21, size = rel(2), fill = "red") +
+  geom_point(aes(y=highflow_mean), shape = 21, size = rel(2), fill = "blue2") +
+  geom_abline(intercept = 0, slope = 1) +
+  scale_x_log10() +
+  scale_y_log10()
+
+```
+
+#### Low-water: Test observed/predicted ratio 1  
+```{r}
+ggplot(dat_indekser, 
+       aes(lowflow_m3s, lowflow_mean/lowflow_m3s)) +
+  geom_point(shape = 21, size = rel(2), fill = "red") +
+  geom_hline(yintercept = 1) +
+  scale_x_log10() +
+  scale_y_log10()
+
+
+```
+
+#### Low-water: Test observed/predicted ratio 2    
+```{r}
+ggplot(dat_indekser, 
+       aes(index_dams, lowflow_mean/lowflow_m3s)) +
+  geom_point(shape = 21, size = rel(2), fill = "red") +
+  geom_hline(yintercept = 1) +
+  scale_y_log10()
+
+```
+
+#### g. Examine low-water indices vs. indices of hydropower  
+
+The index of effect of hydropower on low-water shows a similar pattern, with values around 1 when there are no dams in the catchment of the station. It appears to be more closely linked to the amount of hydropower development in general than to the amount of dams in the catchment. 
+
+```{r}
+
+# 1. index_dams
+
+mod <- lm(lowwater_indicator ~ index_dams, 
+          data = dat_indekser |> filter(index_dams > 0), 
+          na.action = na.omit)
+
+gg1 <- ggplot(dat_indekser, aes(index_dams, lowwater_indicator)) +
+  geom_point() +
+  geom_smooth(
+    data = dat_indekser |> filter(lowwater_indicator > 0),
+    method = "lm", linetype = "dashed", color = "red3") +
+  scale_y_log10() +
+  labs(x = "Index of hydropower dams", y = "Low-water indicator") +
+  labs(subtitle = paste("Model: ", get_model_summ(mod), 
+       "\nNote: regression fitted to catchments with dams")) +
+  theme(plot.subtitle = element_text(size = 7))
+
+# 2. index_regul
+
+mod <- lm(lowwater_indicator ~ index_regul, 
+          data = dat_indekser |> filter(index_regul > 0), 
+          na.action = na.omit)
+
+gg2 <- ggplot(dat_indekser, aes(index_regul, lowwater_indicator)) +
+  geom_point() +
+  geom_smooth(
+    data = dat_indekser |> filter(index_regul > 0),
+    method = "lm", linetype = "dashed", color = "red3") +
+  scale_y_log10() +
+  labs(x = "Index of hydropower development", y = "Low-water indicator") +
+  labs(subtitle = paste("Model: ", get_model_summ(mod), 
+       "\nNote: regression fitted to catchments with hydropower")) +
+  theme(plot.subtitle = element_text(size = 7))
+
+plot_grid(gg1, gg2, nrow = 1)
+
+```
+
+
+### 9.4 Check subsets of data  
 
 * We select relatively low-lying rivers over a certain size   
 
 #### a. Add groupings  
 
 ```{r}
+
+altitude_limit <- 450
+altitude_limit_finnmark <- 200  
+normal_riverflow_limit <- 5
+
 dat_indekser <- dat_indekser |> 
   mutate(
     region = case_when(
@@ -695,9 +873,9 @@ dat_indekser <- dat_indekser |>
       county %in% c("Agder","Telemark") ~ "Agder og Telemark",
       TRUE ~ "Østlandet"),
     altitude_limit = case_when(
-      region %in% "Finnmark" ~ 200,
-      TRUE ~ 200),
-    Q_limit = 5,
+      region %in% "Finnmark" ~ altitude_limit_finnmark,
+      TRUE ~ altitude_limit),
+    Q_limit = normal_riverflow_limit,
     group1 = case_when(
       altitude < altitude_limit ~ "low",
       altitude >= altitude_limit ~ "high"), 
@@ -710,6 +888,50 @@ dat_indekser <- dat_indekser |>
   )
 
 ```
+
+
+#### b. LEAFLET
+
+```{r}
+if (FALSE){
+  
+  library(leaflet)
+  
+  # use this to choose transformation from normal water flow to point size:
+  quantile(log10(dat_leaflet$normalQ_m3s))
+  hist(log10(dat_leaflet$normalQ_m3s)+3)
+  hist((log10(dat_leaflet$normalQ_m3s)+2.5)*1.3)
+
+  dat_leaflet <- dat_indekser |>
+    st_as_sf() |> 
+    st_transform(4326) |> 
+    mutate(
+      col = case_when(
+        group2 == "low,big" ~ "red",
+        group2 == "low,small" ~ "green",
+        group2 == "high,big" ~ "black",
+        group2 == "high,small" ~ "blue"),
+      size = 1.3*(log10(normalQ_m3s)+2.5),
+      popup = paste0(navn, "<br>", 
+                     areal_km2, " km2<br>",
+                     normalQ_m3s, " m3/s<br>",
+                     altitude, " m<br>",
+                     "dam index = ", index_dams)
+    )
+  coord <- st_coordinates(dat_leaflet)
+  dat_leaflet$lng <- coord[,1]
+  dat_leaflet$lat <- coord[,2]
+  # dat_leaflet 
+  leaflet(dat_leaflet) |> 
+    addTiles() |> 
+    addCircleMarkers(radius = ~size, weight = 2, 
+                     color = "black", 
+                     fillColor = ~col, fillOpacity = 0.7,
+                     popup = ~popup)
+
+  }
+```
+
 
 #### b. Map   
 ```{r}
@@ -735,10 +957,63 @@ ggplot(dat_indekser, aes(altitude, log(index_dams+1),
   
 ```
 
-#### c. Choose subset: low-altitude "big" (>5 m3/s) rivers  
+#### Table bny groups and dams    
+```{r}
+dat_indekser |> 
+  count(group2, index_dams==0) 
+
+```
+
+
+#### Plot flood index vs dams, by group  
+```{r}
+ggplot(dat_indekser, aes(index_dams, lowwater_indicator)) +
+  geom_point() +
+  geom_smooth(
+    data = dat_indekser |> filter(index_dams > 0),
+    method = "lm", linetype = "dashed", color = "red3") +
+  scale_y_log10() +
+  labs(x = "Index of hydropower dams", y = "Low-water indicator") +
+  theme(plot.subtitle = element_text(size = 7)) +
+  facet_wrap(vars(group2))
+
+```
+
+### 9.5 Make subset to use for the indicator  
+
+#### Choose subset:   
+* Relatively low-altitude rivers (below `r `altitude_limit_finnmark` in Finnmark, below `r altitude_limit` in the rest of Norway)  
+* Normal river flow > `r normal_riverflow_limit`  m3/s  
 ```{r}
 
 dat_indekser2 <- dat_indekser |> filter(group2 %in% "low,big")
+
+# Selected number and percentgage of total
+nrow(dat_indekser2)
+round(100*nrow(dat_indekser2)/nrow(dat_indekser), 1)
+
+# Sum and percentage of dam-free rivers
+sum(dat_indekser2$index_dams == 0)
+round(100*sum(dat_indekser2$index_dams == 0)/nrow(dat_indekser2), 1)
+
+```
+
+#### Table - mean low-water indicator  
+```{r} 
+
+dat_indekser |> 
+  group_by(group2) |> 
+  summarise(
+    lowwater_indicator_zerodams = mean(lowwater_indicator),
+    n = n()
+  )
+dat_indekser |> 
+  filter(index_dams == 0) |> 
+  group_by(group2) |> 
+  summarise(
+    lowwater_indicator = mean(lowwater_indicator),
+    n = n()
+  )
 
 ```
 
@@ -777,6 +1052,7 @@ range(dat_indekser2$flood_indicator)
 
 # Reference level 1 = mean for rivers without dams  
 ref_1 <- mean(subset(dat_indekser2, dams == "no dams")$lowwater_indicator)
+ref_1
 # ref_1 is already approximately zero  
 
 ```
@@ -790,10 +1066,6 @@ ref_1 <- mean(subset(dat_indekser2, dams == "no dams")$lowwater_indicator)
 
 ```{r}
 # weights
-w <- c(0.7/obs_ratio, 0.3*obs_ratio)
-w <- c(3,1)
-w <- w/sum(w)
-
 n_dam <- sum(dat_indekser2$dams == "dams")
 n_nodam <- sum(dat_indekser2$dams == "no dams")
 n_dam/(n_dam + n_nodam)  # 47% dams
@@ -819,7 +1091,7 @@ summary(mod)
 
 
 
-### 9.7 Examinations  
+### 9.8 Examinations  
 
 #### a. Examine flood indices vs. indices of hydropower  
 
@@ -988,19 +1260,51 @@ dat_indekser |>
 
 
 
-
+### 9.x LEAFLET
 
 ```{r}
 if (FALSE){
+  
   library(leaflet)
-  dat_leaflet <- dat_indekser |> 
-  leaflet() 
-}
+  sf_points <- st_as_sf(dat_indekser, 
+                  	coords = c("Longitude", "Latitude"),
+                  	crs = 4326)
+  
+  hist(log10(dat_leaflet$normalQ_m3s)+3)
+
+  dat_leaflet <- dat_indekser |>
+    st_as_sf() |> 
+    st_transform(4326) |> 
+    mutate(
+      col = case_when(
+        group2 == "low,big" ~ "red",
+        group2 == "low,small" ~ "green",
+        group2 == "high,big" ~ "black",
+        group2 == "high,smalll" ~ "blue"),
+      size = log10(normalQ_m3s) + 3,
+      popup = paste0(navn, "<br>", 
+                     areal_km2, " km2<br>",
+                     normalQ_m3s, " m3/s<br>",
+                     altitude, " m<br>",
+                     "dam index = ", index_dams)
+    )
+  coord <- st_coordinates(dat_leaflet)
+  dat_leaflet$lng <- coord[,1]
+  dat_leaflet$lat <- coord[,2]
+  # dat_leaflet 
+  leaflet(dat_leaflet) |> 
+    addTiles() |> 
+    addCircleMarkers(radius = ~size, weight = 2, 
+                     color = "black", 
+                     fillColor = ~col, fillOpacity = 0.7,
+                     popup = ~popup)
+
+  }
 ```
 
 
 
-### 9.3 Examinations  
+### 9.x Examinations  
 
 #### a. Examine flood indices vs. indices of hydropower  
 
@@ -1146,65 +1450,6 @@ plot_grid(gg1, gg2, nrow = 1)
 
 
 
-#### b. Examine low-water indices vs. indices of hydropower  
-
-The index of effect of hydropower on low-water shows a smilirar pattern, with values around 1 when there are no dams in the catchment of the station. It appears to be more closely linked to the amount of hydropower development in general than to the amount of dams in the catchment. 
-
-```{r}
-
-
-
-# 1. index_dams
-
-mod <- lm(lowwater_indicator ~ index_dams, 
-          data = dat_indekser |> filter(index_dams > 0), 
-          na.action = na.omit)
-
-gg1 <- ggplot(dat_indekser, aes(index_dams, lowwater_indicator)) +
-  geom_point() +
-  geom_smooth(
-    data = dat_indekser |> filter(lowwater_indicator > 0),
-    method = "lm", linetype = "dashed", color = "red3") +
-  scale_y_log10() +
-  labs(x = "Index of hydropower dams", y = "Low-water indicator") +
-  labs(subtitle = paste("Model: ", get_model_summ(mod), 
-       "\nNote: regression fitted to catchments with dams")) +
-  theme(plot.subtitle = element_text(size = 7))
-
-# 2. index_regul
-
-mod <- lm(lowwater_indicator ~ index_regul, 
-          data = dat_indekser |> filter(index_regul > 0), 
-          na.action = na.omit)
-
-gg2 <- ggplot(dat_indekser, aes(index_regul, lowwater_indicator)) +
-  geom_point() +
-  geom_smooth(
-    data = dat_indekser |> filter(index_regul > 0),
-    method = "lm", linetype = "dashed", color = "red3") +
-  scale_y_log10() +
-  labs(x = "Index of hydropower development", y = "Low-water indicator") +
-  labs(subtitle = paste("Model: ", get_model_summ(mod), 
-       "\nNote: regression fitted to catchments with hydropower")) +
-  theme(plot.subtitle = element_text(size = 7))
-
-plot_grid(gg1, gg2, nrow = 1)
-
-```
-
-
-#### c. Observed and modelled natural low-water values  
-```{r}
-ggplot(dat_indekser, 
-       aes(lowflow_m3s, lowflow_mean)) +
-  geom_point(shape = 21, size = rel(2), fill = "blue2") +
-  geom_point(aes(y=highflow_mean), shape = 21, size = rel(2), fill = "red") +
-  geom_abline(intercept = 0, slope = 1) +
-  scale_x_log10() +
-  scale_y_log10()
-
-```
-
 
 #### d. Observed and modelled natural low-water values
 
@@ -1224,7 +1469,7 @@ dat_indekser |>
 
 
 
-### 9.4 Spatial aspects  
+### 9.x Spatial aspects  
 
 #### Map 1   
 ```{r}
